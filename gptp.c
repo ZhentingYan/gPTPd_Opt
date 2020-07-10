@@ -23,7 +23,7 @@ static void gptp_init(int argc, char* argv[])
 	/* Setup default parameters */
 	gPTPd.logLevel = GPTP_LOG_LVL_DEFAULT;
 	gPTPd.daemonMode = TRUE;
-	strcpy(&gPTPd.ifName[0], "eth0");
+	strcpy(&gPTPd.ifName[0], "ens33");
 
 	/* Parse command line arguments */
 	while((argIdx+1) <= argc) {
@@ -128,7 +128,8 @@ static void gptp_start(void)
 	struct hwtstamp_config hwcfg;
 	struct timeval rxTimeout;
 	int fd;
-
+	unsigned int ifreq_size = sizeof(struct ifreq);
+	unsigned int tsOpts_size = sizeof(int);
 	/* Open RAW socket to send on */
 	if ((gPTPd.sockfd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_1588))) == -1) {
 		gPTP_logMsg(GPTP_LOG_ERROR, "gPTP Socket creation error %d %d\n", gPTPd.sockfd, errno);
@@ -136,12 +137,12 @@ static void gptp_start(void)
 	}
 
 	/* Get the index of the interface to send on */
-	memset(&gPTPd.if_idx, 0, sizeof(struct ifreq));
+	memset(&gPTPd.if_idx, 0, ifreq_size);
 	strncpy(gPTPd.if_idx.ifr_name, gPTPd.ifName, GPTP_IF_NAME_SIZE-1);
 	if (ioctl(gPTPd.sockfd, SIOCGIFINDEX, &gPTPd.if_idx) < 0)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SIOCGIFINDEX err:%d\n", errno);
 	/* Get the MAC address of the interface to send on */
-	memset(&gPTPd.if_mac, 0, sizeof(struct ifreq));
+	memset(&gPTPd.if_mac, 0, ifreq_size);
 	strncpy(gPTPd.if_mac.ifr_name, gPTPd.ifName, GPTP_IF_NAME_SIZE-1);
 	if (ioctl(gPTPd.sockfd, SIOCGIFHWADDR, &gPTPd.if_mac) < 0)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SIOCGIFHWADDR err:%d\n", errno);
@@ -149,7 +150,7 @@ static void gptp_start(void)
 #ifndef GPTPD_BUILD_X_86
 
 	/* Set HW timestamp */
-	memset(&gPTPd.if_hw, 0, sizeof(struct ifreq));
+	memset(&gPTPd.if_hw, 0, ifreq_size);
 	memset(&hwcfg, 0, sizeof(struct hwtstamp_config));
 	strncpy(gPTPd.if_hw.ifr_name, gPTPd.ifName, GPTP_IF_NAME_SIZE-1);
 	hwcfg.tx_type = HWTSTAMP_TX_ON;
@@ -163,7 +164,7 @@ static void gptp_start(void)
 	/* Set timestamp options */
 	tsOpts = SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_TX_HARDWARE | SOF_TIMESTAMPING_RAW_HARDWARE | \
 		 SOF_TIMESTAMPING_OPT_CMSG | SOF_TIMESTAMPING_OPT_ID;
-	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_TIMESTAMPING, &tsOpts, sizeof(tsOpts)) < 0)
+	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_TIMESTAMPING, &tsOpts, tsOpts_size) < 0)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SO_TIMESTAMPING err:%d\n", errno);
 
 #else
@@ -184,7 +185,7 @@ static void gptp_start(void)
 
 	/* Set error queue options */
 	tsOpts = 1;
-	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_SELECT_ERR_QUEUE, &tsOpts, sizeof(tsOpts)) < 0)
+	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_SELECT_ERR_QUEUE, &tsOpts, tsOpts_size) < 0)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SO_SELECT_ERR_QUEUE err:%d\n", errno);
 
 	/* Set to promiscuous mode */
@@ -195,7 +196,7 @@ static void gptp_start(void)
 
 	/* Set reuse socket */
 	tsOpts = 1;
-	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_REUSEADDR, &tsOpts, sizeof(tsOpts)) < 0)
+	if (setsockopt(gPTPd.sockfd, SOL_SOCKET, SO_REUSEADDR, &tsOpts, tsOpts_size) < 0)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SO_REUSEADDR err:%d\n", errno);
 
 	/* Bind to device */
@@ -354,7 +355,7 @@ int main(int argc, char* argv[])
 	csHandleEvent(&gPTPd, GPTP_EVT_CS_ENABLE);
 
 	/* Event loop */
-        while (1) {
+	for (;;) {
 		int cnt = 0;
 		int evt = GPTP_EVT_NONE;
 		u64 currTickTS = gptp_getCurrMilliSecTS();
