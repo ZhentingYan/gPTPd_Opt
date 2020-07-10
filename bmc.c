@@ -1,5 +1,7 @@
 
 #define BEST_MASTER_CLOCK_SELECTION
+#define LEN_ETHHDR 			sizeof(struct ethhdr)
+#define LEN_GPTPPRIOVEC 	sizeof(struct gPTPPrioVec)
 
 #include "bmc.h"
 #include "sync.h"
@@ -94,8 +96,8 @@ static void bmcHandleStateChange(struct gPTPd* gPTPd, int toState)
 static void sendAnnounce(struct gPTPd* gPTPd)
 {
 	int err = 0;
-	int txLen = sizeof(struct ethhdr);
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[sizeof(struct ethhdr)];
+	int txLen = LEN_ETHHDR;
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[LEN_ETHHDR];
 	struct gPTPPrioVec *prio = (struct gPTPPrioVec*)&gPTPd->txBuf[GPTP_BODY_OFFSET];
 	struct gPTPtlv *tlv;
 
@@ -121,7 +123,7 @@ static void sendAnnounce(struct gPTPd* gPTPd)
 	memcpy(&prio->iden[0], &gPTPd->bmc.portPrio.iden[0], GPTP_PORT_IDEN_LEN);
 	prio->stepsRem = gPTPd->bmc.portPrio.stepsRem;
 	prio->clockSrc = gPTPd->bmc.portPrio.clockSrc;
-	txLen += sizeof(struct gPTPPrioVec);
+	txLen += LEN_GPTPPRIOVEC;
 
 	/* Path trace TLV */
 	tlv = (struct gPTPtlv *)&gPTPd->txBuf[txLen];
@@ -132,7 +134,7 @@ static void sendAnnounce(struct gPTPd* gPTPd)
 	txLen += GPTP_CLOCK_IDEN_LEN;
 
 	/* Insert length */
-	gh->h.f.msgLen = gptp_chgEndianess16(txLen - sizeof(struct ethhdr));
+	gh->h.f.msgLen = gptp_chgEndianess16(txLen - LEN_ETHHDR);
 
 	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, sizeof(struct sockaddr_ll))) < 0)
 		gPTP_logMsg(GPTP_LOG_DEBUG, "Announce Send failed %d %d\n", err, errno);	
@@ -145,6 +147,7 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 	bool gmFound = FALSE;
 
 	struct gPTPPrioVec *gnPrio = (struct gPTPPrioVec *)&gPTPd->rxBuf[GPTP_BODY_OFFSET];
+	struct gPTPPrioVec *gpv = (struct gPTPPrioVec*)&gPTPd->bmc.portPrio;
 
 	gPTP_logMsg(GPTP_LOG_DEBUG, "Gnprio: %x:%x:%x:%x:%x:%x:%x \n",
 			    gnPrio->prio1, gnPrio->clockQual.clockClass, gnPrio->clockQual.clockAccuracy,
@@ -154,37 +157,31 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 			    gnPrio->iden[0], gnPrio->iden[1], gnPrio->iden[2], gnPrio->iden[3],
 			    gnPrio->iden[4], gnPrio->iden[5], gnPrio->iden[6], gnPrio->iden[7]);
 	gPTP_logMsg(GPTP_LOG_DEBUG, "Portprio: %x:%x:%x:%x:%x:%x:%x \n",
-			    gPTPd->bmc.portPrio.prio1, gPTPd->bmc.portPrio.clockQual.clockClass,
-			    gPTPd->bmc.portPrio.clockQual.clockAccuracy,
-			    gPTPd->bmc.portPrio.clockQual.offsetScaledLogVariance,
-			    gPTPd->bmc.portPrio.prio2,
-			    gPTPd->bmc.portPrio.stepsRem,
-			    gPTPd->bmc.portPrio.clockSrc);
+			    gpv->prio1, gpv->clockQual.clockClass,
+			    gpv->clockQual.clockAccuracy,
+			    gpv->clockQual.offsetScaledLogVariance,
+			    gpv->prio2,
+			    gpv->stepsRem,
+			    gpv->clockSrc);
 	gPTP_logMsg(GPTP_LOG_DEBUG, "Portprio: %x:%x:%x:%x:%x:%x:%x:%x \n",
-			    gPTPd->bmc.portPrio.iden[0], gPTPd->bmc.portPrio.iden[1],
-			    gPTPd->bmc.portPrio.iden[2], gPTPd->bmc.portPrio.iden[3],
-			    gPTPd->bmc.portPrio.iden[4], gPTPd->bmc.portPrio.iden[5],
-			    gPTPd->bmc.portPrio.iden[6], gPTPd->bmc.portPrio.iden[7]);
+			    gpv->iden[0], gpv->iden[1],
+			    gpv->iden[2], gpv->iden[3],
+			    gpv->iden[4], gpv->iden[5],
+			    gpv->iden[6], gpv->iden[7]);
 
-	if(gnPrio->prio1 < gPTPd->bmc.portPrio.prio1)
-		gmFound = TRUE;
-	else if(gnPrio->clockQual.clockClass < gPTPd->bmc.portPrio.clockQual.clockClass)
-		gmFound = TRUE;
-	else if(gnPrio->clockQual.clockAccuracy < gPTPd->bmc.portPrio.clockQual.clockAccuracy)
-		gmFound = TRUE;
-	else if(gptp_chgEndianess16(gnPrio->clockQual.offsetScaledLogVariance) < gPTPd->bmc.portPrio.clockQual.offsetScaledLogVariance)
-		gmFound = TRUE;
-	else if(gnPrio->prio2 < gPTPd->bmc.portPrio.prio2)
-		gmFound = TRUE;
-	else if(gnPrio->stepsRem < gPTPd->bmc.portPrio.stepsRem)
-		gmFound = TRUE;
-	else if(gnPrio->clockSrc < gPTPd->bmc.portPrio.clockSrc)
+	if(gnPrio->prio1 < gpv->prio1 || 
+	gnPrio->clockQual.clockClass < gpv->clockQual.clockClass || 
+	gnPrio->clockQual.clockAccuracy < gpv->clockQual.clockAccuracy || 
+	gptp_chgEndianess16(gnPrio->clockQual.offsetScaledLogVariance) < gpv->clockQual.offsetScaledLogVariance || 
+	gnPrio->prio2 < gpv->prio2 || 
+	gnPrio->stepsRem < gpv->stepsRem || 
+	gnPrio->clockSrc < gpv->clockSrc)
 		gmFound = TRUE;
 	else {
 		for(int i = 0; ((i < GPTP_PORT_IDEN_LEN) && (gmFound == FALSE)); i++) {
-			if(gnPrio->iden[i] < gPTPd->bmc.portPrio.iden[i])
+			if(gnPrio->iden[i] < gpv->iden[i])
 				gmFound = TRUE;
-			else if(gnPrio->iden[i] > gPTPd->bmc.portPrio.iden[i])
+			else if(gnPrio->iden[i] > gpv->iden[i])
 				break;
 			else
 				continue;	
@@ -195,12 +192,12 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 		gPTP_logMsg(GPTP_LOG_INFO, "High prio announce from: %x:%x:%x:%x:%x:%x:%x:%x \n",
 			    gnPrio->iden[0], gnPrio->iden[1], gnPrio->iden[2], gnPrio->iden[3],
 			    gnPrio->iden[4], gnPrio->iden[5], gnPrio->iden[6], gnPrio->iden[7]);
-		memcpy(&gPTPd->bmc.gmPrio, gnPrio, sizeof(struct gPTPPrioVec));
+		memcpy(&gPTPd->bmc.gmPrio, gnPrio, LEN_GPTPPRIOVEC);
 	} else {
 		gPTP_logMsg(GPTP_LOG_INFO, "Low prio announce from %x:%x:%x:%x:%x:%x:%x:%x \n",
 			    gnPrio->iden[0], gnPrio->iden[1], gnPrio->iden[2], gnPrio->iden[3],
 			    gnPrio->iden[4], gnPrio->iden[5], gnPrio->iden[6], gnPrio->iden[7]);
-		memcpy(&gPTPd->bmc.gmPrio, &gPTPd->bmc.portPrio, sizeof(struct gPTPPrioVec));
+		memcpy(&gPTPd->bmc.gmPrio, &gPTPd->bmc.portPrio, LEN_GPTPPRIOVEC);
 	}
 	
 	return gmFound;
@@ -208,19 +205,20 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 	
 static void updatePrioVectors(struct gPTPd* gPTPd)
 {
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[sizeof(struct ethhdr)];
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[LEN_ETHHDR];
+	struct gPTPPrioVec *gpv = (struct gPTPPrioVec*)&gPTPd->bmc.portPrio;
 
-	gPTPd->bmc.portPrio.currUTCOff = 0;
-	gPTPd->bmc.portPrio.prio1  = GPTP_DEFAULT_CLOCK_PRIO1;
-	gPTPd->bmc.portPrio.clockQual.clockClass = GPTP_DEFAULT_CLOCK_CLASS;
-	gPTPd->bmc.portPrio.clockQual.clockAccuracy = GPTP_DEFAULT_CLOCK_ACCURACY;
-	gPTPd->bmc.portPrio.clockQual.offsetScaledLogVariance = GPTP_DEFAULT_OFFSET_VARIANCE;
-	gPTPd->bmc.portPrio.prio2 = GPTP_DEFAULT_CLOCK_PRIO2;
-	memcpy(&gPTPd->bmc.portPrio.iden[0], &gh->h.f.srcPortIden[0], GPTP_PORT_IDEN_LEN);
-	gPTPd->bmc.portPrio.stepsRem = GPTP_DEFAULT_STEPS_REMOVED;
-	gPTPd->bmc.portPrio.clockSrc = GPTP_CLOCK_TYPE_INT_OSC;
+	gpv->currUTCOff = 0;
+	gpv->prio1  = GPTP_DEFAULT_CLOCK_PRIO1;
+	gpv->clockQual.clockClass = GPTP_DEFAULT_CLOCK_CLASS;
+	gpv->clockQual.clockAccuracy = GPTP_DEFAULT_CLOCK_ACCURACY;
+	gpv->clockQual.offsetScaledLogVariance = GPTP_DEFAULT_OFFSET_VARIANCE;
+	gpv->prio2 = GPTP_DEFAULT_CLOCK_PRIO2;
+	memcpy(&gpv->iden[0], &gh->h.f.srcPortIden[0], GPTP_PORT_IDEN_LEN);
+	gpv->stepsRem = GPTP_DEFAULT_STEPS_REMOVED;
+	gpv->clockSrc = GPTP_CLOCK_TYPE_INT_OSC;
 
-	memcpy(&gPTPd->bmc.gmPrio, &gPTPd->bmc.portPrio, sizeof(struct gPTPPrioVec));
+	memcpy(&gPTPd->bmc.gmPrio, &gpv, LEN_GPTPPRIOVEC);
 }
 
 
