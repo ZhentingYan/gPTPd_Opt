@@ -1,7 +1,5 @@
 
 #define BEST_MASTER_CLOCK_SELECTION
-#define LEN_ETHHDR 			sizeof(struct ethhdr)
-#define LEN_GPTPPRIOVEC 	sizeof(struct gPTPPrioVec)
 
 #include "bmc.h"
 #include "sync.h"
@@ -96,8 +94,8 @@ static void bmcHandleStateChange(struct gPTPd* gPTPd, int toState)
 static void sendAnnounce(struct gPTPd* gPTPd)
 {
 	int err = 0;
-	int txLen = LEN_ETHHDR;
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[LEN_ETHHDR];
+	int txLen = sizeof(struct ethhdr);
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[txLen];
 	struct gPTPPrioVec *prio = (struct gPTPPrioVec*)&gPTPd->txBuf[GPTP_BODY_OFFSET];
 	struct gPTPtlv *tlv;
 
@@ -110,6 +108,7 @@ static void sendAnnounce(struct gPTPd* gPTPd)
 	gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->bmc.announceInterval / 1000);
 
 	/* Add gPTP header size */
+	int Len_ethhdr = txLen;
 	txLen += sizeof(struct gPTPHdr);
 
 	/* PTP body */
@@ -123,7 +122,7 @@ static void sendAnnounce(struct gPTPd* gPTPd)
 	memcpy(&prio->iden[0], &gPTPd->bmc.portPrio.iden[0], GPTP_PORT_IDEN_LEN);
 	prio->stepsRem = gPTPd->bmc.portPrio.stepsRem;
 	prio->clockSrc = gPTPd->bmc.portPrio.clockSrc;
-	txLen += LEN_GPTPPRIOVEC;
+	txLen += sizeof(struct gPTPPrioVec);
 
 	/* Path trace TLV */
 	tlv = (struct gPTPtlv *)&gPTPd->txBuf[txLen];
@@ -134,7 +133,7 @@ static void sendAnnounce(struct gPTPd* gPTPd)
 	txLen += GPTP_CLOCK_IDEN_LEN;
 
 	/* Insert length */
-	gh->h.f.msgLen = gptp_chgEndianess16(txLen - LEN_ETHHDR);
+	gh->h.f.msgLen = gptp_chgEndianess16(txLen - Len_ethhdr);
 
 	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, sizeof(struct sockaddr_ll))) < 0)
 		gPTP_logMsg(GPTP_LOG_DEBUG, "Announce Send failed %d %d\n", err, errno);	
@@ -188,16 +187,17 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 		}	
 	}
 
+	int Len_gptppriovec = sizeof(struct gPTPPrioVec);
 	if(gmFound == TRUE) {
 		gPTP_logMsg(GPTP_LOG_INFO, "High prio announce from: %x:%x:%x:%x:%x:%x:%x:%x \n",
 			    gnPrio->iden[0], gnPrio->iden[1], gnPrio->iden[2], gnPrio->iden[3],
 			    gnPrio->iden[4], gnPrio->iden[5], gnPrio->iden[6], gnPrio->iden[7]);
-		memcpy(&gPTPd->bmc.gmPrio, gnPrio, LEN_GPTPPRIOVEC);
+		memcpy(&gPTPd->bmc.gmPrio, gnPrio, Len_gptppriovec);
 	} else {
 		gPTP_logMsg(GPTP_LOG_INFO, "Low prio announce from %x:%x:%x:%x:%x:%x:%x:%x \n",
 			    gnPrio->iden[0], gnPrio->iden[1], gnPrio->iden[2], gnPrio->iden[3],
 			    gnPrio->iden[4], gnPrio->iden[5], gnPrio->iden[6], gnPrio->iden[7]);
-		memcpy(&gPTPd->bmc.gmPrio, &gPTPd->bmc.portPrio, LEN_GPTPPRIOVEC);
+		memcpy(&gPTPd->bmc.gmPrio, &gPTPd->bmc.portPrio, Len_gptppriovec);
 	}
 	
 	return gmFound;
@@ -205,7 +205,7 @@ static bool updateAnnounceInfo(struct gPTPd* gPTPd)
 	
 static void updatePrioVectors(struct gPTPd* gPTPd)
 {
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[LEN_ETHHDR];
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[sizeof(struct ethhdr)];
 	struct gPTPPrioVec *gpv = (struct gPTPPrioVec*)&gPTPd->bmc.portPrio;
 
 	gpv->currUTCOff = 0;
@@ -218,7 +218,7 @@ static void updatePrioVectors(struct gPTPd* gPTPd)
 	gpv->stepsRem = GPTP_DEFAULT_STEPS_REMOVED;
 	gpv->clockSrc = GPTP_CLOCK_TYPE_INT_OSC;
 
-	memcpy(&gPTPd->bmc.gmPrio, &gpv, LEN_GPTPPRIOVEC);
+	memcpy(&gPTPd->bmc.gmPrio, &gpv, sizeof(struct gPTPPrioVec));
 }
 
 
