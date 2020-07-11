@@ -40,16 +40,16 @@ void csHandleEvent(struct gPTPd* gPTPd, int evtId)
 	switch(gPTPd->cs.state) {
 
 		case CS_STATE_INIT:
-			switch (evtId) {
-				case GPTP_EVT_STATE_ENTRY:
-					break;
-				case GPTP_EVT_CS_ENABLE:
-					break;
-				case GPTP_EVT_STATE_EXIT:
-					break;
-				default:
-					break;
-			}
+			// switch (evtId) {
+			// 	case GPTP_EVT_STATE_ENTRY:
+			// 		break;
+			// 	case GPTP_EVT_CS_ENABLE:
+			// 		break;
+			// 	case GPTP_EVT_STATE_EXIT:
+			// 		break;
+			// 	default:
+			// 		break;
+			// }
 			break;
 
 		case CS_STATE_GRAND_MASTER:
@@ -154,7 +154,8 @@ static void sendSync(struct gPTPd* gPTPd)
 	gh->h.f.flags = gptp_chgEndianess16(GPTP_FLAGS_TWO_STEP);
 
 	gh->h.f.ctrl = GPTP_CONTROL_SYNC;
-	gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval / 1000);
+	//gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval / 1000);
+	gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval *0.001);
 
 	/* Add gPTP header size */
 	txLen += len_gPTPHdr;
