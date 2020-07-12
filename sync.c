@@ -1,11 +1,10 @@
-
 #define CLOCK_SYNCHRONIZATION
 
 #include "sync.h"
 
-int len_ethhdr = sizeof(struct ethhdr);
-int len_gPTPHdr = sizeof(struct gPTPHdr);
-int len_sockaddr_ll = sizeof(struct sockaddr_ll);
+//int len_ethhdr = sizeof(struct ethhdr);
+//int len_gPTPHdr = sizeof(struct gPTPHdr);
+//int len_sockaddr_ll = sizeof(struct sockaddr_ll);
 int len_gPTPOrgExt = sizeof(struct gPTPOrgExt);
 
 void initCS(struct gPTPd* gPTPd)
@@ -103,12 +102,8 @@ void csHandleEvent(struct gPTPd* gPTPd, int evtId)
 						gPTPd->tx.time.tv_sec  = sync[1].tv_sec;
 						gPTPd->tx.time.tv_usec = sync[1].tv_nsec;
 
-#ifdef GPTPD_BUILD_X_86
-						gPTPd->tx.modes   = (ADJ_SETOFFSET | ADJ_NANO);
-						if(clock_adjtime(CLOCK_REALTIME, &gPTPd->tx) < 0)
-#else
 						if(syscall(__NR_clock_adjtime, gPTPd->hwClkId, &gPTPd->tx) < 0)
-#endif
+
 							gPTP_logMsg(GPTP_LOG_ERROR, "clock_adjTime failure, clk_id:%d, err:%d\n", gPTPd->hwClkId, errno);
 					}
 
@@ -145,8 +140,8 @@ static void csHandleStateChange(struct gPTPd* gPTPd, int toState)
 static void sendSync(struct gPTPd* gPTPd)
 {
 	int err = 0;
-	int txLen = len_ethhdr;
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[len_ethhdr];
+	int txLen = sizeof(struct ethhdr);
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[sizeof(struct ethhdr)];
 
 	/* Fill gPTP header */
 	gh->h.f.seqNo = gptp_chgEndianess16(gPTPd->cs.syncSeqNo);
@@ -155,19 +150,19 @@ static void sendSync(struct gPTPd* gPTPd)
 
 	gh->h.f.ctrl = GPTP_CONTROL_SYNC;
 	//gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval / 1000);
-	gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval *0.001);
+    gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval *0.001);
 
 	/* Add gPTP header size */
-	txLen += len_gPTPHdr;
+	txLen +=  sizeof(struct gPTPHdr);
 
 	/* PTP body */
 	memset(&gPTPd->txBuf[GPTP_BODY_OFFSET], 0, (GPTP_TX_BUF_SIZE - GPTP_BODY_OFFSET));
 	txLen += GPTP_TS_LEN;
 
 	/* Insert length */
-	gh->h.f.msgLen = gptp_chgEndianess16(txLen - len_ethhdr);
+	gh->h.f.msgLen = gptp_chgEndianess16(txLen - sizeof(struct ethhdr));
 
-	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, len_sockaddr_ll)) < 0)
+	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, sizeof(struct sockaddr_ll))) < 0)
 		gPTP_logMsg(GPTP_LOG_DEBUG, "Sync Send failed %d %d\n", err, errno);	
 	else
 		gPTP_logMsg(GPTP_LOG_INFO, ">>> Sync (%d) sent\n", gPTPd->cs.syncSeqNo);
@@ -176,8 +171,8 @@ static void sendSync(struct gPTPd* gPTPd)
 static void sendSyncFlwup(struct gPTPd* gPTPd)
 {
 	int err = 0;
-	int txLen = len_ethhdr;
-	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[len_ethhdr];
+	int txLen = sizeof(struct ethhdr);
+	struct gPTPHdr *gh = (struct gPTPHdr *)&gPTPd->txBuf[sizeof(struct ethhdr)];
 	struct gPTPtlv *tlv;
 	struct gPTPOrgExt *orgExt;
 
@@ -187,10 +182,11 @@ static void sendSyncFlwup(struct gPTPd* gPTPd)
 	gh->h.f.flags = gptp_chgEndianess16(GPTP_FLAGS_NONE);
 
 	gh->h.f.ctrl = GPTP_CONTROL_SYNC_FLWUP;
-	gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval / 1000);
+	//gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval / 1000);
+    gh->h.f.logMsgInt = gptp_calcLogInterval(gPTPd->cs.syncInterval *0.001);
 
 	/* Add gPTP header size */
-	txLen += len_gPTPHdr;
+	txLen += sizeof(struct gPTPHdr);
 
 	/* PTP body */
 	memset(&gPTPd->txBuf[GPTP_BODY_OFFSET], 0, (GPTP_TX_BUF_SIZE - GPTP_BODY_OFFSET));
@@ -208,12 +204,10 @@ static void sendSyncFlwup(struct gPTPd* gPTPd)
 	txLen += len_gPTPOrgExt;
 
 	/* Insert length */
-	gh->h.f.msgLen = gptp_chgEndianess16(txLen - len_ethhdr);
+	gh->h.f.msgLen = gptp_chgEndianess16(txLen - sizeof(struct ethhdr));
 
-	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, len_sockaddr_ll)) < 0)
+	if ((err = sendto(gPTPd->sockfd, gPTPd->txBuf, txLen, 0, (struct sockaddr*)&gPTPd->txSockAddress, sizeof(struct sockaddr_ll))) < 0)
 		gPTP_logMsg(GPTP_LOG_DEBUG, "SyncFollowup Send failed %d %d\n", err, errno);	
 	else
 		gPTP_logMsg(GPTP_LOG_INFO, "=== SyncFollowup (%d) sent\n", gPTPd->cs.syncSeqNo++);
 }
-
-
