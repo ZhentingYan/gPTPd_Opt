@@ -26,7 +26,8 @@ static void gptp_init(int argc, char* argv[])
 	strcpy(&gPTPd.ifName[0], "ens33");
 
 	/* Parse command line arguments */
-	while((argIdx+1) <= argc) {
+	argc -= 1;
+	while(argIdx <= argc) {
 		if(argv[argIdx][0] == '-') {
 			switch(argv[argIdx][1]) {
 				case 'N':
@@ -204,50 +205,54 @@ static void gptp_start(void)
 	    gPTP_logMsg(GPTP_LOG_ERROR, "SO_BINDTODEVICE err:%d\n", errno);
 
 	/* Index of the network device */
-	gPTPd.txSockAddress.sll_family = AF_PACKET;
-	gPTPd.txSockAddress.sll_protocol = htons(ETH_P_1588);
-	gPTPd.txSockAddress.sll_ifindex = gPTPd.if_idx.ifr_ifindex;
+	struct sockaddr_ll *txSA = (struct sockaddr_ll *)&gPTPd.txSockAddress;
+	txSA->sll_family = AF_PACKET;
+	txSA->sll_protocol = htons(ETH_P_1588);
+	txSA->sll_ifindex = gPTPd.if_idx.ifr_ifindex;
 	/* Address length*/
-	gPTPd.txSockAddress.sll_halen = ETH_ALEN;
+	txSA->sll_halen = ETH_ALEN;
 	/* Destination MAC */
-	gPTPd.txSockAddress.sll_addr[0] = 0x01;
-	gPTPd.txSockAddress.sll_addr[1] = 0x80;
-	gPTPd.txSockAddress.sll_addr[2] = 0xC2;
-	gPTPd.txSockAddress.sll_addr[3] = 0x00;
-	gPTPd.txSockAddress.sll_addr[4] = 0x00;
-	gPTPd.txSockAddress.sll_addr[5] = 0x0E;
+	txSA->sll_addr[0] = 0x01;
+	txSA->sll_addr[1] = 0x80;
+	txSA->sll_addr[2] = 0xC2;
+	txSA->sll_addr[3] = 0x00;
+	txSA->sll_addr[4] = 0x00;
+	txSA->sll_addr[5] = 0x0E;
 
 	/* Set the message header */
-	gPTPd.txMsgHdr.msg_control=NULL;
-	gPTPd.txMsgHdr.msg_controllen=0;
-	gPTPd.txMsgHdr.msg_flags=0;
-	gPTPd.txMsgHdr.msg_name=&gPTPd.txSockAddress;
-	gPTPd.txMsgHdr.msg_namelen=sizeof(struct sockaddr_ll);
+	struct msghdr *txMH = (struct msghdr *)&gPTPd.txMsgHdr;
+	txMH->msg_control=NULL;
+	txMH->msg_controllen=0;
+	txMH->msg_flags=0;
+	txMH->msg_name=&gPTPd.txSockAddress;
+	txMH->msg_namelen=sizeof(struct sockaddr_ll);
 
 	/* Index of the network device */
-	gPTPd.rxSockAddress.sll_family = AF_PACKET;
-	gPTPd.rxSockAddress.sll_protocol = htons(ETH_P_1588);
-	gPTPd.rxSockAddress.sll_ifindex = gPTPd.if_idx.ifr_ifindex;
+	struct sockaddr_ll *rxSA = (struct sockaddr_ll *)&gPTPd.rxSockAddress;
+	rxSA->sll_family = AF_PACKET;
+	rxSA->sll_protocol = htons(ETH_P_1588);
+	rxSA->sll_ifindex = gPTPd.if_idx.ifr_ifindex;
 	/* Address length*/
-	gPTPd.rxSockAddress.sll_halen = ETH_ALEN;
+	rxSA->sll_halen = ETH_ALEN;
 	/* Destination MAC */
-	gPTPd.rxSockAddress.sll_addr[0] = 0x01;
-	gPTPd.rxSockAddress.sll_addr[1] = 0x80;
-	gPTPd.rxSockAddress.sll_addr[2] = 0xC2;
-	gPTPd.rxSockAddress.sll_addr[3] = 0x00;
-	gPTPd.rxSockAddress.sll_addr[4] = 0x00;
-	gPTPd.rxSockAddress.sll_addr[5] = 0x0E;
+	rxSA->sll_addr[0] = 0x01;
+	rxSA->sll_addr[1] = 0x80;
+	rxSA->sll_addr[2] = 0xC2;
+	rxSA->sll_addr[3] = 0x00;
+	rxSA->sll_addr[4] = 0x00;
+	rxSA->sll_addr[5] = 0x0E;
 
 	/* Set the message header */
 	gPTPd.rxiov.iov_base = gPTPd.rxBuf;
 	gPTPd.rxiov.iov_len  = GPTP_RX_BUF_SIZE;
-	gPTPd.rxMsgHdr.msg_iov = &gPTPd.rxiov;
-	gPTPd.rxMsgHdr.msg_iovlen = 1;
-	gPTPd.rxMsgHdr.msg_control=gPTPd.tsBuf;
-	gPTPd.rxMsgHdr.msg_controllen=GPTP_CON_TS_BUF_SIZE;
-	gPTPd.rxMsgHdr.msg_flags=0;
-	gPTPd.rxMsgHdr.msg_name=&gPTPd.rxSockAddress;
-	gPTPd.rxMsgHdr.msg_namelen=sizeof(struct sockaddr_ll);	
+	struct msghdr *rxMH = (struct msghdr *)&gPTPd.rxMsgHdr;
+	rxMH->msg_iov = &gPTPd.rxiov;
+	rxMH->msg_iovlen = 1;
+	rxMH->msg_control=gPTPd.tsBuf;
+	rxMH->msg_controllen=GPTP_CON_TS_BUF_SIZE;
+	rxMH->msg_flags=0;
+	rxMH->msg_name=&gPTPd.rxSockAddress;
+	rxMH->msg_namelen=sizeof(struct sockaddr_ll);	
 
 #ifndef GPTPD_BUILD_X_86
 	/* Open the hardware clock */
@@ -304,21 +309,21 @@ static int gptp_parseMsg(void)
 static void gptp_handleEvent(int evt)
 {
 	/* Handle the events when available */
-	if (evt != GPTP_EVT_NONE) {
-		switch(evt & GPTP_EVT_DEST_MASK) {
-			case GPTP_EVT_DEST_DM:
-				dmHandleEvent(&gPTPd, evt);
-				break;
-			case GPTP_EVT_DEST_BMC:
-				bmcHandleEvent(&gPTPd, evt);
-				break;
-			case GPTP_EVT_DEST_CS:
-				csHandleEvent(&gPTPd, evt);
-				break;
-			default:
-				gPTP_logMsg(GPTP_LOG_ERROR, "gPTP unknown evt 0x%x\n", evt);
-				break;
-		}
+	switch(evt & GPTP_EVT_DEST_MASK) {
+		case GPTP_EVT_NONE & GPTP_EVT_DEST_MASK:
+			break;
+		case GPTP_EVT_DEST_DM:
+			dmHandleEvent(&gPTPd, evt);
+			break;
+		case GPTP_EVT_DEST_BMC:
+			bmcHandleEvent(&gPTPd, evt);
+			break;
+		case GPTP_EVT_DEST_CS:
+			csHandleEvent(&gPTPd, evt);
+			break;
+		default:
+			gPTP_logMsg(GPTP_LOG_ERROR, "gPTP unknown evt 0x%x\n", evt);
+			break;
 	}
 }
 
@@ -363,16 +368,17 @@ int main(int argc, char* argv[])
 		gPTP_logMsg(GPTP_LOG_DEBUG, "\n");
 
 		/* Check for any timer event */
+		struct timer *timers = (struct timer *)&gPTPd.timers[0];
 		for(int i = 0; i < GPTP_NUM_TIMERS; i++) {
-			if (gPTPd.timers[i].timeInterval > 0) {
+			if (timers[i].timeInterval > 0) {
 				gPTP_logMsg(GPTP_LOG_DEBUG, "gPTP timer %d timeInt %lu timeEvt %d diffTS %ld\n",
-					    i, gPTPd.timers[i].timeInterval, gPTPd.timers[i].timerEvt, (currTickTS - gPTPd.timers[i].lastTS));
+					    i, timers[i].timeInterval, timers[i].timerEvt, (currTickTS - timers[i].lastTS));
 				/* When the requested time elapsed for this timer */
-				if((gPTPd.timers[i].lastTS + gPTPd.timers[i].timeInterval) < currTickTS)			
+				if((timers[i].lastTS + timers[i].timeInterval) < currTickTS)			
 				{
 					/* Update and handle the timer event */
-					gPTPd.timers[i].lastTS = currTickTS;
-					gptp_handleEvent(gPTPd.timers[i].timerEvt);
+					timers[i].lastTS = currTickTS;
+					gptp_handleEvent(timers[i].timerEvt);
 				}
 			}
 		}
@@ -391,7 +397,7 @@ int main(int argc, char* argv[])
 		} else {
 			sleep(1);
 		}
-        }
+    }
 
 	/* Cleanup */
 	gptp_exit();
