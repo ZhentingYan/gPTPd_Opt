@@ -133,6 +133,7 @@ void dmHandleEvent(struct gPTPd *gPTPd, int evtId)
 			gPTP_logMsg(GPTP_LOG_INFO, "@@@ t%d: %lld_%ld\n", 4, (s64)gPTPd->ts[3].tv_sec, gPTPd->ts[3].tv_nsec);
 			gptp_timespec_diff(&gPTPd->ts[0], &gPTPd->ts[3], &diff[0]);
 			gptp_timespec_diff(&gPTPd->ts[1], &gPTPd->ts[2], &diff[1]);
+			
 			if (diff[1].tv_nsec > diff[0].tv_nsec)
 			{
 				gPTP_logMsg(GPTP_LOG_INFO, "Negative delay ignored 0:%lu 1:%lu\n", diff[0].tv_nsec, diff[1].tv_nsec);
@@ -150,6 +151,8 @@ void dmHandleEvent(struct gPTPd *gPTPd, int evtId)
 					gPTP_logMsg(GPTP_LOG_NOTICE, "---> gPTP msrdDelay: %lu\n", gPTPd->msrdDelay);
 				}
 			}
+
+
 			dmHandleStateChange(gPTPd, DM_STATE_IDLE);
 			break;
 		// case GPTP_EVT_STATE_EXIT:
