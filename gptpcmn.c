@@ -195,7 +195,6 @@ u8 gptp_calcLogInterval(u32 time) {
         linInt = logInt >> 1;
         logInt++;
     }
-
     return logInt;
 }
 
@@ -204,7 +203,7 @@ void getTxTS(struct gPTPd *gPTPd, struct timespec *ts) {
     // static short sk_revents = POLLPRI;
     static int sk_events = POLLPRI;
     static int sk_revents = POLLPRI;
-    int cnt = 0, res = 0, level, type;
+    int cnt = 0, res = 0, level, type,len;
     struct cmsghdr *cm;
     struct timespec *sw, *rts = NULL;
     struct pollfd pfd = {gPTPd->sockfd, sk_events, 0};
@@ -230,8 +229,9 @@ void getTxTS(struct gPTPd *gPTPd, struct timespec *ts) {
                  cm = CMSG_NXTHDR(&gPTPd->rxMsgHdr, cm)) {
                 level = cm->cmsg_level;
                 type = cm->cmsg_type;
+				len = cm->cmsg_len;
                 gPTP_logMsg(GPTP_LOG_DEBUG, "Lvl:%d Type: %d Size: %d (%d)\n",
-                            level, type, cm->cmsg_len, sizeof(struct timespec));
+                            level, type, len, sizeof(struct timespec));
                 if (SOL_SOCKET == level && SO_TIMESTAMPING == type) {
                     if (cm->cmsg_len < sizeof(*ts) * 3) {
                         gPTP_logMsg(GPTP_LOG_DEBUG,
@@ -283,7 +283,7 @@ void getTxTS(struct gPTPd *gPTPd, struct timespec *ts) {
                     }
                 }
                 if (SOL_SOCKET == level && SO_TIMESTAMPNS == type) {
-                    if (cm->cmsg_len < sizeof(*sw)) {
+                    if (len < sizeof(*sw)) {
                         gPTP_logMsg(GPTP_LOG_DEBUG,
                                     "short SO_TIMESTAMPNS message");
                     }
@@ -291,10 +291,11 @@ void getTxTS(struct gPTPd *gPTPd, struct timespec *ts) {
             }
         }
     } while (1);
+	
 }
 
 void getRxTS(struct gPTPd *gPTPd, struct timespec *ts) {
-    int level, type;
+    int level, type,len;
     struct cmsghdr *cm;
     struct timespec *sw, *rts = NULL;
 
@@ -302,10 +303,11 @@ void getRxTS(struct gPTPd *gPTPd, struct timespec *ts) {
          cm = CMSG_NXTHDR(&gPTPd->rxMsgHdr, cm)) {
         level = cm->cmsg_level;
         type = cm->cmsg_type;
+		len = cm->cmsg_len;
         gPTP_logMsg(GPTP_LOG_DEBUG, "Lvl:%d Type: %d Size: %d (%d)\n", level,
-                    type, cm->cmsg_len, sizeof(struct timespec));
+                    type, len, sizeof(struct timespec));
         if (SOL_SOCKET == level && SO_TIMESTAMPING == type) {
-            if (cm->cmsg_len < sizeof(*ts) * 3) {
+            if (len < sizeof(*ts) * 3) {
                 gPTP_logMsg(GPTP_LOG_DEBUG, "short SO_TIMESTAMPING message");
             } else {
                 rts = (struct timespec *)CMSG_DATA(cm);
@@ -349,7 +351,7 @@ void getRxTS(struct gPTPd *gPTPd, struct timespec *ts) {
             }
         }
         if (SOL_SOCKET == level && SO_TIMESTAMPNS == type) {
-            if (cm->cmsg_len < sizeof(*sw)) {
+            if (len < sizeof(*sw)) {
                 gPTP_logMsg(GPTP_LOG_DEBUG, "short SO_TIMESTAMPNS message");
             }
         }
